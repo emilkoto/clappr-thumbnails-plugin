@@ -1,7 +1,8 @@
-import {UICorePlugin, Styler, Events, template, $} from 'clappr'
-import {Promise} from 'es6-promise-polyfill'
+import { UICorePlugin, Styler, Events, template, $ } from 'clappr'
+import { Promise } from 'es6-promise-polyfill'
 import pluginHtml from './public/scrub-thumbnails.html'
 import pluginStyle from './public/style.sass'
+var CryptoJS = require("crypto-js");
 
 export default class ScrubThumbnailsPlugin extends UICorePlugin {
   get name() { return 'scrub-thumbnails' }
@@ -27,17 +28,38 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
   static buildSpriteConfig(spriteSheetUrl, numThumbs, thumbWidth, thumbHeight, numColumns, timeInterval, startTime) {
     startTime = startTime || 0
     var thumbs = []
-    for(let i=0; i<numThumbs; i++) {
+    for (let i = 0; i < numThumbs; i++) {
       thumbs.push({
         url: spriteSheetUrl,
-        time: startTime+(i*timeInterval),
+        time: startTime + (i * timeInterval),
         w: thumbWidth,
         h: thumbHeight,
-        x: (i%numColumns) * thumbWidth,
-        y: Math.floor(i/numColumns) * thumbHeight
+        x: (i % numColumns) * thumbWidth,
+        y: Math.floor(i / numColumns) * thumbHeight
       })
     }
     return thumbs
+  }
+
+  token(url) {
+    let witoutProtocol = url.substring(url.indexOf('//') + 2, url.legth); // => emil.es/pepe/manolo.jpg
+    let base = witoutProtocol.substring(0, witoutProtocol.indexOf('/')); // => emil.es
+    let uri = url.substring(url.indexOf(base) + base.length, url.length); // => pepe/manolo.jpg
+
+    var expire = Math.ceil(Date.now() / 1000) + 30;// link expires in 3600 seconds
+    var secret = 'IdB0J4qlVy3bzSiGGXzrbk4EzulVGtb2';
+
+    var md5 = this.generateSecurePathHash(uri, expire, secret);
+    return { 'md5': md5, 'expires': expire.toString() }
+  }
+
+  generateSecurePathHash(url, expires, secret) {
+    if (!url || !expires || !secret) {
+      return undefined;
+    }
+    var input = expires + url + " " + secret;
+    var base64Value = CryptoJS.enc.Base64.stringify(CryptoJS.MD5(input));
+    return base64Value.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   }
 
   // TODO check if seek enabled
@@ -53,7 +75,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
     // one entry for each thumbnail
     this._thumbs = []
     // a promise that will be resolved when thumbs have loaded
-    this._onThumbsLoaded =  new Promise((resolve) => {
+    this._onThumbsLoaded = new Promise((resolve) => {
       this._onThumbsLoadedResolve = resolve
     })
     this._buildThumbsFromOptions().then(() => {
@@ -90,31 +112,31 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
     return this._onThumbsLoaded.then(() => {
       var promises = thumbSrcs.map((a) => {
         return this._addThumbFromSrc(a).then((thumb) => {
-            if (this._getOptions().backdropHeight) {
-              // append thumb to backdrop
-              var index = this._thumbs.indexOf(thumb)
-              var $img = this._buildImg(thumb, this._getOptions().backdropHeight)
-              // Add thumbnail reference
-              this._$backdropCarouselImgs.splice(index, 0, $img)
-              // Add thumbnail to DOM
-              if (this._$backdropCarouselImgs.length === 1) {
-                this._$carousel.append($img) 
-              }
-              else if (index === 0) {
-                this._$backdropCarouselImgs[1].before($img)
-              }
-              else {
-                this._$backdropCarouselImgs[index-1].after($img)
-              }
+          if (this._getOptions().backdropHeight) {
+            // append thumb to backdrop
+            var index = this._thumbs.indexOf(thumb)
+            var $img = this._buildImg(thumb, this._getOptions().backdropHeight)
+            // Add thumbnail reference
+            this._$backdropCarouselImgs.splice(index, 0, $img)
+            // Add thumbnail to DOM
+            if (this._$backdropCarouselImgs.length === 1) {
+              this._$carousel.append($img)
             }
+            else if (index === 0) {
+              this._$backdropCarouselImgs[1].before($img)
+            }
+            else {
+              this._$backdropCarouselImgs[index - 1].after($img)
+            }
+          }
         })
       })
       return Promise.all(promises).then(() => {
-          if (promises.length > 0) {
-            this._renderPlugin()
-          }
+        if (promises.length > 0) {
+          this._renderPlugin()
+        }
       })
-    }) 
+    })
   }
 
   // provide a reference to the thumb object you provided to remove it
@@ -191,11 +213,15 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
   _calculateHoverPosition(e) {
     var offset = e.pageX - this.core.mediaControl.$seekBarContainer.offset().left
     // proportion into the seek bar that the mouse is hovered over 0-1
-    this._hoverPosition = Math.min(1, Math.max(offset/this.core.mediaControl.$seekBarContainer.width(), 0))
+    this._hoverPosition = Math.min(1, Math.max(offset / this.core.mediaControl.$seekBarContainer.width(), 0))
   }
 
   _buildThumbsFromOptions() {
     var thumbs = this._getOptions().thumbs
+    thumbs.forEach(el => {
+      let token = this.token(el.url);
+      el.url = `${el.url}?md5=${token.md5}&expires=${token.expires}`;
+    })
     var promises = thumbs.map((thumb) => {
       return this._addThumbFromSrc(thumb)
     })
@@ -226,7 +252,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
       }
 
       var next = index < this._thumbs.length ? this._thumbs[index] : null
-      var prev = index > 0 ? this._thumbs[index-1] : null
+      var prev = index > 0 ? this._thumbs[index - 1] : null
       if (prev) {
         // update the duration of the previous thumbnail
         prev.duration = startTime - prev.time
@@ -281,12 +307,12 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
 
     // append each of the thumbnails to the backdrop carousel
     let $carousel = this._$carousel
-    for (let i=0; i<this._thumbs.length; i++) {
+    for (let i = 0; i < this._thumbs.length; i++) {
       let $img = this._buildImg(this._thumbs[i], this._getOptions().backdropHeight)
       // Keep reference to thumbnail
       this._$backdropCarouselImgs.push($img)
       // Add thumbnail to DOM
-      $carousel.append($img) 
+      $carousel.append($img)
     }
   }
 
@@ -313,7 +339,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
     var thumbs = this._thumbs
 
     // assuming that each thumbnail has the same width
-    var thumbWidth = carouselWidth/thumbs.length
+    var thumbWidth = carouselWidth / thumbs.length
 
     // determine which thumbnail applies to the current time
     var thumbIndex = this._getThumbIndexForTime(hoverTime)
@@ -334,15 +360,15 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
     // now calculate the position along carousel that we want to be above the hover position
     var xCoordInCarousel = (thumbIndex * thumbWidth) + xCoordInThumb
     // and finally the position of the carousel when the hover position is taken in to consideration
-    var carouselXCoord = xCoordInCarousel - (hoverPosition*backdropWidth)
-    
+    var carouselXCoord = xCoordInCarousel - (hoverPosition * backdropWidth)
+
     $carousel.css("left", -carouselXCoord)
 
     var maxOpacity = this._getOptions().backdropMaxOpacity || 0.6;
     var minOpacity = this._getOptions().backdropMinOpacity || 0.08;
 
     // now update the transparencies so that they fade in around the active one
-    for(let i=0; i<thumbs.length; i++) {
+    for (let i = 0; i < thumbs.length; i++) {
       let thumbXCoord = thumbWidth * i
       let distance = thumbXCoord - xCoordInCarousel
       if (distance < 0) {
@@ -350,10 +376,10 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
         // each side of the active thumbnail
         // at every point on the active thumbnail the distance should
         // be 0
-        distance = Math.min(0, distance+thumbWidth)
+        distance = Math.min(0, distance + thumbWidth)
       }
       // fade over the width of 2 thumbnails
-      let opacity = Math.max(maxOpacity - (Math.abs(distance)/(2*thumbWidth)), minOpacity)
+      let opacity = Math.max(maxOpacity - (Math.abs(distance) / (2 * thumbWidth)), minOpacity)
       this._$backdropCarouselImgs[i].css("opacity", opacity)
     }
   }
@@ -373,7 +399,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
     // determine which thumbnail applies to the current time
     var thumbIndex = this._getThumbIndexForTime(hoverTime)
     var thumb = this._thumbs[thumbIndex]
-    
+
     // update thumbnail
     var $spotlight = this._$spotlight
     $spotlight.empty()
@@ -383,7 +409,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
     var thumbWidth = $spotlight.width()
 
     var spotlightXPos = (elWidth * hoverPosition) - (thumbWidth / 2)
-    
+
     // adjust so the entire thumbnail is always visible
     spotlightXPos = Math.max(Math.min(spotlightXPos, elWidth - thumbWidth), 0)
 
@@ -394,7 +420,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
   // or null if there is no thumbnail that can represent the time
   _getThumbIndexForTime(time) {
     var thumbs = this._thumbs
-    for(let i=thumbs.length-1; i>=0; i--) {
+    for (let i = thumbs.length - 1; i >= 0; i--) {
       let thumb = thumbs[i]
       if (thumb.time <= time) {
         return i
@@ -405,6 +431,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
   }
 
   _renderPlugin() {
+    if (!this.core.mediaControl.currentDurationValue) return;
     if (!this._thumbsLoaded) {
       return
     }
@@ -419,7 +446,7 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
   }
 
   _createElements() {
-    this.$el.html(this.template({'backdropHeight':this._getOptions().backdropHeight, 'spotlightHeight':this._getOptions().spotlightHeight}))
+    this.$el.html(this.template({ 'backdropHeight': this._getOptions().backdropHeight, 'spotlightHeight': this._getOptions().spotlightHeight }))
     this.$el.append(Styler.getStyleFor(pluginStyle))
     // cache dom references
     this._$spotlight = this.$el.find(".spotlight")
