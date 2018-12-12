@@ -218,10 +218,10 @@ export default class ScrubThumbnailsPlugin extends UICorePlugin {
 
   _buildThumbsFromOptions() {
     var thumbs = this._getOptions().thumbs
-    thumbs.forEach(el => {
-      let token = this.token(el.url);
-      el.url = `${el.url}?md5=${token.md5}&expires=${token.expires}`;
-    })
+    //thumbs.forEach(el => {
+    //  let token = this.token(el.url);
+    //  el.url = `${el.url}?md5=${token.md5}&expires=${token.expires}`;
+    //})
     var promises = thumbs.map((thumb) => {
       return this._addThumbFromSrc(thumb)
     })
